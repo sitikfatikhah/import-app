@@ -28,6 +28,8 @@ class FortifyServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        Fortify::username('nik');
+
         $this->configureActions();
         $this->configureViews();
         $this->configureRateLimiting();
