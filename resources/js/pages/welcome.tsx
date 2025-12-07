@@ -29,7 +29,7 @@ export default function Welcome({
             </Head>
 
             <div className="flex min-h-screen flex-col items-center bg-[#FDFDFC] p-6 text-[#1b1b18] lg:justify-center lg:p-8 dark:bg-[#0a0a0a]">
-                
+
                 {/* HEADER */}
                 <header className="mb-6 w-full max-w-[335px] text-sm lg:max-w-4xl">
                     <nav className="flex items-center justify-end gap-4">
@@ -111,6 +111,83 @@ function Globe() {
         scene.add(light);
 
         scene.add(new window.THREE.AmbientLight(0x404040));
+
+        // Fetch data dari GlobeController (GET tidak butuh CSRF token)
+        fetch('/geo', {
+            method: 'GET',
+            headers: {
+                'Accept': 'application/json',
+            },
+        })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                console.log('Data received from GlobeController:', data);
+
+                if (data.type === 'FeatureCollection' && data.features) {
+                    // Process setiap feature/negara
+                    data.features.forEach((feature: any) => {
+                        if (feature.geometry && feature.geometry.coordinates) {
+                            // Buat outline untuk setiap negara
+                            drawCountryBorders(feature, scene);
+                        }
+                    });
+
+                    console.log(`Loaded ${data.features.length} countries`);
+                }
+            })
+            .catch(error => {
+                console.error('Error fetching globe data:', error);
+            });
+
+        // Function untuk menggambar border negara
+        function drawCountryBorders(feature: any, scene: any) {
+            const coordinates = feature.geometry.coordinates;
+
+            // Convert lat/lng to 3D coordinates
+            function latLngToVector3(lng: number, lat: number, radius: number) {
+                const phi = (90 - lat) * (Math.PI / 180);
+                const theta = (lng + 180) * (Math.PI / 180);
+
+                const x = -(radius * Math.sin(phi) * Math.cos(theta));
+                const y = radius * Math.cos(phi);
+                const z = radius * Math.sin(phi) * Math.sin(theta);
+
+                return new window.THREE.Vector3(x, y, z);
+            }
+
+            // Handle different geometry types
+            if (feature.geometry.type === 'Polygon') {
+                drawPolygon(coordinates[0], 2.01);
+            } else if (feature.geometry.type === 'MultiPolygon') {
+                coordinates.forEach((polygon: any) => {
+                    drawPolygon(polygon[0], 2.01);
+                });
+            }
+
+            function drawPolygon(coords: any[], radius: number) {
+                const points: any[] = [];
+                coords.forEach(coord => {
+                    const [lng, lat] = coord;
+                    points.push(latLngToVector3(lng, lat, radius));
+                });
+
+                // Buat line untuk border
+                const lineGeometry = new window.THREE.BufferGeometry().setFromPoints(points);
+                const lineMaterial = new window.THREE.LineBasicMaterial({
+                    color: 0xffffff,
+                    linewidth: 1,
+                    opacity: 0.5,
+                    transparent: true
+                });
+                const line = new window.THREE.Line(lineGeometry, lineMaterial);
+                scene.add(line);
+            }
+        }
 
         // Animate
         let animationId: number;
