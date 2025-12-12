@@ -3,10 +3,118 @@ import { type SharedData } from '@/types';
 import { Head, Link, usePage } from '@inertiajs/react';
 import { useEffect, useRef } from "react";
 
+// Type declarations for CDN-loaded Three.js
+type ThreeObject3D = {
+    material?: unknown;
+    children: ThreeObject3D[];
+    rotation: { x: number; y: number; z: number };
+};
+
+type ThreeVector3 = {
+    x: number;
+    y: number;
+    z: number;
+};
+
+type ThreeGroup = {
+    add: (object: unknown) => void;
+    children: ThreeObject3D[];
+};
+
+type ThreeScene = {
+    add: (object: unknown) => void;
+};
+
+type ThreeCamera = {
+    position: { set: (x: number, y: number, z: number) => void };
+    aspect: number;
+    updateProjectionMatrix: () => void;
+};
+
+type ThreeRenderer = {
+    setSize: (width: number, height: number) => void;
+    setPixelRatio: (ratio: number) => void;
+    setClearColor: (color: number, alpha: number) => void;
+    shadowMap: { enabled: boolean; type: number };
+    domElement: HTMLElement;
+    render: (scene: unknown, camera: unknown) => void;
+    dispose: () => void;
+};
+
+type ThreeMesh = {
+    castShadow: boolean;
+    receiveShadow: boolean;
+    rotation: { x: number; y: number; z: number };
+    material?: { opacity: number };
+};
+
+type ThreeMaterial = {
+    color: { setHex: (hex: number) => void };
+    metalness?: number;
+    roughness?: number;
+    emissive: { setHex: (hex: number) => void };
+    emissiveIntensity?: number;
+    needsUpdate: boolean;
+    opacity?: number;
+};
+
+type ThreeLight = {
+    position: { set: (x: number, y: number, z: number) => void };
+    castShadow?: boolean;
+    shadow?: {
+        mapSize: { width: number; height: number };
+        camera: { near: number; far: number };
+    };
+    color: { setHex: (hex: number) => void };
+    intensity: number;
+};
+
+type ThreeGeometry = {
+    setAttribute: (name: string, attribute: unknown) => void;
+};
+
+type ThreeCurve = {
+    getPoints: (divisions: number) => ThreeVector3[];
+};
+
+type ThreePoints = {
+    rotation: { x: number; y: number; z: number };
+};
+
+type ThreeNebulaObject = {
+    rotation: { y: number };
+    material: { opacity: number };
+};
+
 declare global {
     interface Window {
-        THREE: any;
-        Globe: any;
+        THREE: {
+            Scene: new () => ThreeScene;
+            PerspectiveCamera: new (fov: number, aspect: number, near: number, far: number) => ThreeCamera;
+            WebGLRenderer: new (params: unknown) => ThreeRenderer;
+            SphereGeometry: new (radius: number, widthSegments: number, heightSegments: number) => unknown;
+            MeshStandardMaterial: new (params: unknown) => ThreeMaterial;
+            Mesh: new (geometry: unknown, material: unknown) => ThreeMesh;
+            AmbientLight: new (color: number, intensity: number) => ThreeLight;
+            DirectionalLight: new (color: number, intensity: number) => ThreeLight;
+            PointLight: new (color: number, intensity: number, distance: number) => ThreeLight;
+            BufferGeometry: new () => ThreeGeometry & { setFromPoints: (points: ThreeVector3[]) => ThreeGeometry };
+            BufferAttribute: new (array: Float32Array, itemSize: number) => unknown;
+            PointsMaterial: new (params: unknown) => unknown;
+            Points: new (geometry: unknown, material: unknown) => ThreePoints;
+            MeshBasicMaterial: new (params: unknown) => unknown;
+            Group: new () => ThreeGroup;
+            Vector3: new (x: number, y: number, z: number) => ThreeVector3;
+            CatmullRomCurve3: new (points: ThreeVector3[]) => ThreeCurve;
+            LineBasicMaterial: new (params: unknown) => unknown;
+            Line: new (geometry: unknown, material: unknown) => unknown;
+            DoubleSide: number;
+            BackSide: number;
+            AdditiveBlending: number;
+            PCFSoftShadowMap: number;
+            OrbitControls?: new (camera: unknown, domElement: HTMLElement) => unknown;
+        };
+        Globe: unknown;
     }
 }
 
@@ -139,7 +247,7 @@ export default function Welcome({
                         </div>
 
                         {/* Right Content - Globe (Fullscreen) */}
-                        <div className="fixed inset-0 z-0 pointer-events-none">
+                        <div className="fixed inset-0 z-0" style={{pointerEvents: 'none'}}>
                             <Globe />
                         </div>
                     </div>
@@ -165,11 +273,11 @@ export default function Welcome({
 
 function Globe() {
     const containerRef = useRef<HTMLDivElement>(null);
-    const rendererRef = useRef<any>(null);
-    const sceneRef = useRef<any>(null);
-    const cameraRef = useRef<any>(null);
-    const controlsRef = useRef<any>(null);
-    const globeRef = useRef<any>(null);
+    const rendererRef = useRef<ThreeRenderer | null>(null);
+    const sceneRef = useRef<ThreeScene | null>(null);
+    const cameraRef = useRef<ThreeCamera | null>(null);
+    const controlsRef = useRef<unknown>(null);
+    const globeRef = useRef<ThreeMesh | null>(null);
 
     useEffect(() => {
         if (!window.THREE) {
@@ -183,7 +291,7 @@ function Globe() {
         // Wait for OrbitControls to load
         const initGlobe = () => {
             // Check if OrbitControls is available
-            if (!(window as any).THREE.OrbitControls) {
+            if (!window.THREE.OrbitControls) {
                 console.log("Waiting for OrbitControls...");
                 setTimeout(initGlobe, 100);
                 return;
@@ -193,11 +301,11 @@ function Globe() {
             const height = window.innerHeight;
 
             // Setup Scene
-            const scene = new window.THREE.Scene();
+            const scene = new window.THREE.Scene() as ThreeScene;
             sceneRef.current = scene;
 
             // Setup Camera with proper aspect ratio for fullscreen
-            const camera = new window.THREE.PerspectiveCamera(50, width / height, 0.1, 1000);
+            const camera = new window.THREE.PerspectiveCamera(50, width / height, 0.1, 1000) as ThreeCamera;
             camera.position.set(3, 0, 5.5); // Shifted to right (x=3) to avoid text overlap
             cameraRef.current = camera;
 
@@ -206,7 +314,7 @@ function Globe() {
                 antialias: true,
                 alpha: true,
                 powerPreference: "high-performance"
-            });
+            }) as ThreeRenderer;
             renderer.setSize(width, height);
             renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
             renderer.setClearColor(0x000000, 0);
@@ -216,8 +324,22 @@ function Globe() {
             rendererRef.current = renderer;
 
             // OrbitControls - now safe to use
-            const OrbitControls = (window as any).THREE.OrbitControls;
-            const controls = new OrbitControls(camera, renderer.domElement);
+            const OrbitControls = window.THREE.OrbitControls!;
+            const controls = new OrbitControls(camera, renderer.domElement) as {
+                enableDamping: boolean;
+                dampingFactor: number;
+                enableZoom: boolean;
+                enablePan: boolean;
+                minDistance: number;
+                maxDistance: number;
+                rotateSpeed: number;
+                zoomSpeed: number;
+                autoRotate: boolean;
+                autoRotateSpeed: number;
+                enabled: boolean;
+                update: () => void;
+                dispose: () => void;
+            };
             controls.enableDamping = true;
             controls.dampingFactor = 0.05;
             controls.enableZoom = true;
@@ -247,8 +369,8 @@ function Globe() {
                 emissiveIntensity: isDarkMode ? 0.05 : 0.15,
                 envMapIntensity: 1.5,
                 depthWrite: true
-            });
-            const globe = new window.THREE.Mesh(globeGeometry, globeMaterial);
+            }) as ThreeMaterial;
+            const globe = new window.THREE.Mesh(globeGeometry, globeMaterial) as ThreeMesh;
             globe.castShadow = true;
             globe.receiveShadow = true;
             scene.add(globe);
@@ -258,27 +380,29 @@ function Globe() {
             const ambientLight = new window.THREE.AmbientLight(
                 isDarkMode ? 0x404040 : 0xffffff,
                 isDarkMode ? 0.4 : 1.2
-            );
+            ) as ThreeLight;
             scene.add(ambientLight);
 
             // Main directional light with shadows
             const mainLight = new window.THREE.DirectionalLight(
                 isDarkMode ? 0xffffff : 0xffffff,
                 isDarkMode ? 1.2 : 2.5
-            );
+            ) as ThreeLight;
             mainLight.position.set(8, 5, 8);
             mainLight.castShadow = true;
-            mainLight.shadow.mapSize.width = 2048;
-            mainLight.shadow.mapSize.height = 2048;
-            mainLight.shadow.camera.near = 0.5;
-            mainLight.shadow.camera.far = 50;
+            if (mainLight.shadow) {
+                mainLight.shadow.mapSize.width = 2048;
+                mainLight.shadow.mapSize.height = 2048;
+                mainLight.shadow.camera.near = 0.5;
+                mainLight.shadow.camera.far = 50;
+            }
             scene.add(mainLight);
 
             // Fill light from opposite side
             const fillLight = new window.THREE.DirectionalLight(
                 isDarkMode ? 0x4a6fa5 : 0x89d4ff,
                 isDarkMode ? 0.6 : 0.8
-            );
+            ) as ThreeLight;
             fillLight.position.set(-8, -3, -8);
             scene.add(fillLight);
 
@@ -286,7 +410,7 @@ function Globe() {
             const rimLight = new window.THREE.DirectionalLight(
                 isDarkMode ? 0x2a4a7a : 0x4ca1ff,
                 isDarkMode ? 0.8 : 1.2
-            );
+            ) as ThreeLight;
             rimLight.position.set(0, 5, -10);
             scene.add(rimLight);
 
@@ -295,12 +419,12 @@ function Globe() {
                 isDarkMode ? 0x4ca1ff : 0x4ca1ff,
                 isDarkMode ? 0.5 : 0.8,
                 20
-            );
+            ) as ThreeLight;
             pointLight.position.set(3, 3, 3);
             scene.add(pointLight);
 
             // Create Galaxy/Space Particles Effect
-            const starsGeometry = new window.THREE.BufferGeometry();
+            const starsGeometry = new window.THREE.BufferGeometry() as ThreeGeometry;
             const starCount = 3000;
             const positions = new Float32Array(starCount * 3);
             const colors = new Float32Array(starCount * 3);
@@ -350,7 +474,7 @@ function Globe() {
                 depthWrite: false
             });
 
-            const starField = new window.THREE.Points(starsGeometry, starsMaterial);
+            const starField = new window.THREE.Points(starsGeometry, starsMaterial) as ThreePoints;
             scene.add(starField);
 
             // Add nebula-like glow effect
@@ -362,7 +486,7 @@ function Globe() {
                 side: window.THREE.BackSide,
                 blending: window.THREE.AdditiveBlending
             });
-            const nebula = new window.THREE.Mesh(nebulaGeometry, nebulaMaterial);
+            const nebula = new window.THREE.Mesh(nebulaGeometry, nebulaMaterial) as ThreeNebulaObject;
             scene.add(nebula);
 
             // Function to update theme
@@ -389,11 +513,16 @@ function Globe() {
                 pointLight.intensity = dark ? 0.5 : 0.8;
 
                 // Update borders
-                bordersGroup.children.forEach((child: any) => {
-                    if (child.material) {
-                        child.material.color.setHex(0x4ca1ff);
-                        child.material.opacity = dark ? 0.95 : 1.0;
-                        child.material.needsUpdate = true;
+                bordersGroup.children.forEach((child: ThreeObject3D) => {
+                    if ('material' in child && child.material) {
+                        const material = child.material as {
+                            color?: { setHex: (hex: number) => void };
+                            opacity?: number;
+                            needsUpdate: boolean;
+                        };
+                        if (material.color) material.color.setHex(0x4ca1ff);
+                        if (material.opacity !== undefined) material.opacity = dark ? 0.95 : 1.0;
+                        material.needsUpdate = true;
                     }
                 });
             };
@@ -414,11 +543,11 @@ function Globe() {
             headers: { 'Accept': 'application/json' },
         })
             .then(response => response.json())
-            .then(data => {
+            .then((data: { type?: string; features?: Array<{ geometry?: { type: string; coordinates: number[][][] | number[][][][] } }> }) => {
                 if (data.type === 'FeatureCollection' && data.features) {
-                    data.features.forEach((feature: any) => {
+                    data.features.forEach((feature) => {
                         if (feature.geometry && feature.geometry.coordinates) {
-                            drawCountryBorders(feature, bordersGroup);
+                            drawCountryBorders(feature as { geometry: { type: string; coordinates: number[][][] | number[][][][] } }, bordersGroup);
                         }
                     });
                     console.log(`✓ Loaded ${data.features.length} countries`);
@@ -427,7 +556,7 @@ function Globe() {
             .catch(error => console.error('Error loading countries:', error));
 
         // Draw Country Borders
-        function drawCountryBorders(feature: any, group: any) {
+        function drawCountryBorders(feature: { geometry: { type: string; coordinates: number[][][] | number[][][][] } }, group: ThreeGroup) {
             const coordinates = feature.geometry.coordinates;
 
             function latLngToVector3(lng: number, lat: number, radius: number) {
@@ -439,18 +568,18 @@ function Globe() {
                 return new window.THREE.Vector3(x, y, z);
             }
 
-            function drawPolygon(coords: any[], radius: number) {
+            function drawPolygon(coords: number[][], radius: number) {
                 if (coords.length < 2) return;
 
-                const points: any[] = [];
+                const points: ThreeVector3[] = [];
                 coords.forEach(coord => {
                     const [lng, lat] = coord;
                     points.push(latLngToVector3(lng, lat, radius));
                 });
 
-                const curve = new window.THREE.CatmullRomCurve3(points);
+                const curve = new window.THREE.CatmullRomCurve3(points) as ThreeCurve;
                 const curvePoints = curve.getPoints(points.length * 2);
-                const lineGeometry = new window.THREE.BufferGeometry().setFromPoints(curvePoints);
+                const lineGeometry = (new window.THREE.BufferGeometry() as ThreeGeometry & { setFromPoints: (points: ThreeVector3[]) => ThreeGeometry }).setFromPoints(curvePoints);
                 const lineMaterial = new window.THREE.LineBasicMaterial({
                     color: 0x4ca1ff, // Blue color for coordinates
                     linewidth: 5,
@@ -464,9 +593,9 @@ function Globe() {
             }
 
             if (feature.geometry.type === 'Polygon') {
-                drawPolygon(coordinates[0], 2.005);
+                drawPolygon((coordinates as number[][][])[0], 2.005);
             } else if (feature.geometry.type === 'MultiPolygon') {
-                coordinates.forEach((polygon: any) => {
+                (coordinates as number[][][][]).forEach((polygon: number[][][]) => {
                     drawPolygon(polygon[0], 2.005);
                 });
             }
@@ -552,10 +681,11 @@ function Globe() {
     return (
         <div
             ref={containerRef}
-            className="w-full h-full pointer-events-auto"
+            className="w-full h-full"
             style={{
                 width: '100%',
-                height: '100%'
+                height: '100%',
+                pointerEvents: 'auto'
             }}
         />
     );
